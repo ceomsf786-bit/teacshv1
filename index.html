@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Weekly Activity Log (Cloud-enabled)</title>
+  <style>
+    /* (same style as your original - trimmed for brevity in the canvas preview) */
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px}
+    .container{max-width:1200px;margin:0 auto;background:white;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.2);overflow:hidden}
+    .header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:30px;text-align:center}
+    h1{font-size:2em;margin-bottom:10px}
+    .content{padding:30px}
+    .week-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding:15px;background:#f8f9fa;border-radius:10px}
+    .week-nav button{background:#667eea;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px}
+    .day-tabs{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+    .day-tab{flex:1;min-width:100px;padding:12px;background:#e9ecef;border:none;border-radius:8px;cursor:pointer}
+    .day-tab.active{background:#667eea;color:white;font-weight:bold}
+    .schedule-table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+    .schedule-table thead{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white}
+    .schedule-table th{padding:15px;text-align:left;font-weight:600}
+    .time-cell{padding:15px;font-weight:bold;color:#667eea;width:100px;text-align:center;background:#f8f9fa;border-right:2px solid #dee2e6}
+    .activity-cell{padding:10px 15px}
+    .activity-input{width:100%;padding:10px;border:2px solid #dee2e6;border-radius:5px;font-size:14px}
+    .activity-input.filled{background:#e7f5e7;border-color:#28a745}
+    .btns{display:flex;gap:10px;margin-top:15px}
+    .save-btn{background:#28a745;color:white;border:none;padding:12px 20px;border-radius:50px;cursor:pointer;font-weight:bold}
+    .cloud-btn{background:#0069d9;color:white;border:none;padding:12px 20px;border-radius:50px;cursor:pointer}
+    .notification{position:fixed;top:20px;right:20px;background:#28a745;color:white;padding:12px 18px;border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,0.2);opacity:0;transition:opacity .25s}
+    .notification.show{opacity:1}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📅 Weekly Activity Log</h1>
+      <p>Track your hourly activities day by day — saved locally and to your Google Sheet</p>
+    </div>
+
+    <div class="content">
+      <div class="week-nav">
+        <button onclick="changeWeek(-1)">← Previous Week</button>
+        <div class="current-week" id="currentWeek"></div>
+        <button onclick="changeWeek(1)">Next Week →</button>
+      </div>
+
+      <div class="day-tabs" id="dayTabs"></div>
+
+      <table class="schedule-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Activity</th>
+          </tr>
+        </thead>
+        <tbody id="scheduleBody"></tbody>
+      </table>
+
+      <div class="btns">
+        <button class="save-btn" onclick="saveActivities()">💾 Save (Local)</button>
+        <button class="cloud-btn" onclick="saveToCloud()">☁️ Save to Cloud</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="notification" class="notification">✓ Saved</div>
+
+  <script>
+    // --- Configuration: replace this with your deployed Apps Script Web App URL ---
+    const APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyy3ywN_SGSZjDven_4XHQKJyjUteoErVbEt6G3Sn5yOAc4_lpRy8VFcRGRh2lJgRaF/exec"
+
+    // --- Utility: user ID stored in localStorage (Option A) ---
+    function getOrCreateUserId() {
+      const key = 'weekly_activity_user_id';
+      let id = localStorage.getItem(key);
+      if (!id) {
+        id = 'USER-' + Date.now() + '-' + Math.floor(Math.random() * 100000);
+        localStorage.setItem(key, id);
+      }
+      return id;
+    }
+
+    // --- Existing app state ---
+    let currentWeekOffset = 0;
+    let selectedDay = new Date();
+    let activities = {}; // { '2025-11-15': { '8': 'msg', ... }, ... }
+
+    function init() {
+      updateWeekDisplay();
+      renderDayTabs();
+      loadActivities();
+      renderSchedule();
+    }
+
+    function getWeekDates(offset = 0) {
+      const today = new Date();
+      const currentDay = today.getDay();
+      const diff = currentDay === 0 ? -6 : 1 - currentDay;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diff + (offset * 7));
+      monday.setHours(0,0,0,0);
+      const dates = [];
+      for (let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);dates.push(d);} 
+      return dates;
+    }
+
+    function updateWeekDisplay(){
+      const dates = getWeekDates(currentWeekOffset);
+      const start = dates[0];
+      const end = dates[6];
+      const options = { month:'short', day:'numeric' };
+      const startStr = start.toLocaleDateString('en-US', options);
+      const endStr = end.toLocaleDateString('en-US', options);
+      const year = start.getFullYear();
+      document.getElementById('currentWeek').textContent = `${startStr} - ${endStr}, ${year}`;
+    }
+
+    function renderDayTabs(){
+      const dates = getWeekDates(currentWeekOffset);
+      const tabsContainer = document.getElementById('dayTabs');
+      tabsContainer.innerHTML = '';
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      dates.forEach((date,index)=>{
+        const button = document.createElement('button');
+        button.className='day-tab';
+        const dateStr = date.toISOString().split('T')[0];
+        const selectedDateStr = selectedDay.toISOString().split('T')[0];
+        if (dateStr === selectedDateStr) button.classList.add('active');
+        button.innerHTML = `${days[index]}<br>${date.getDate()}`;
+        button.onclick = ()=>{ selectDay(date); };
+        tabsContainer.appendChild(button);
+      });
+    }
+
+    function selectDay(date){ selectedDay = new Date(date); renderDayTabs(); renderSchedule(); }
+    function changeWeek(dir){ currentWeekOffset += dir; updateWeekDisplay(); renderDayTabs(); renderSchedule(); }
+    function getDateKey(date){ return date.toISOString().split('T')[0]; }
+
+    function renderSchedule(){
+      const dateKey = getDateKey(selectedDay);
+      const dayActivities = activities[dateKey] || {};
+      const tbody = document.getElementById('scheduleBody');
+      tbody.innerHTML = '';
+      for (let hour=1; hour<=24; hour++){
+        const row = document.createElement('tr');
+        const timeCell = document.createElement('td'); timeCell.className='time-cell';
+        const displayHour = hour === 24 ? 12 : (hour>12? hour-12: hour);
+        const ampm = hour < 12 || hour===24? 'AM':'PM';
+        timeCell.textContent = `${displayHour}:00 ${ampm}`;
+        const activityCell = document.createElement('td'); activityCell.className='activity-cell';
+        const input = document.createElement('input'); input.type='text'; input.className='activity-input'; input.placeholder='What are you doing?'; input.dataset.hour = hour;
+        const saved = dayActivities[hour] || '';
+        input.value = saved; if (saved) input.classList.add('filled');
+        input.addEventListener('input', function(){ if (this.value.trim()) this.classList.add('filled'); else this.classList.remove('filled'); });
+        activityCell.appendChild(input); row.appendChild(timeCell); row.appendChild(activityCell); tbody.appendChild(row);
+      }
+    }
+
+    function saveActivities(){
+      const dateKey = getDateKey(selectedDay);
+      const inputs = document.querySelectorAll('.activity-input');
+      const dayData = {};
+      inputs.forEach(input => { const hour = input.dataset.hour; const value = input.value.trim(); if (value) dayData[hour] = value; });
+      if (Object.keys(dayData).length > 0) activities[dateKey] = dayData; else delete activities[dateKey];
+      const data = JSON.stringify(activities);
+      document.cookie = `activities=${encodeURIComponent(data)}; max-age=31536000; path=/`;
+      notify('Saved locally');
+    }
+
+    function loadActivities(){
+      const cookies = document.cookie.split(';');
+      for (let cookie of cookies){ const [name,value] = cookie.trim().split('='); if (name==='activities'){ try{ activities = JSON.parse(decodeURIComponent(value)); }catch(e){ activities = {}; } break; } }
+    }
+
+    function notify(msg, success=true){
+      const n = document.getElementById('notification'); n.textContent = msg; n.classList.add('show'); setTimeout(()=> n.classList.remove('show'), 2500);
+    }
+
+    // --- New: Save all activities to Apps Script (Cloud) ---
+    async function saveToCloud(){
+      if (!APPS_SCRIPT_WEBAPP_URL || APPS_SCRIPT_WEBAPP_URL.includes('YOUR_APPS_SCRIPT_URL')){
+        alert('Please replace APPS_SCRIPT_WEBAPP_URL in the script with your deployed Apps Script Web App URL.');
+        return;
+      }
+
+      // Ensure local saved version is up to date
+      saveActivities();
+
+      const payload = {
+        userId: getOrCreateUserId(),
+        weekStart: getWeekDates(currentWeekOffset)[0].toISOString().split('T')[0],
+        activities: activities // full object: date -> {hour: text}
+      };
+
+      try{
+        const resp = await fetch(APPS_SCRIPT_WEBAPP_URL, {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await resp.json();
+        if (result && result.status === 'success'){
+          notify('Saved to cloud ✓');
+        } else {
+          notify('Cloud save failed');
+          console.error('Cloud error', result);
+        }
+      }catch(err){
+        console.error(err);
+        notify('Cloud save failed (network)');
+      }
+    }
+
+    // init on load
+    init();
+  </script>
+</body>
+</html>
+
