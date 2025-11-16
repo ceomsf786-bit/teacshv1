@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Weekly Activity Log (Cloud-enabled)</title>
   <style>
-    /* (same style as your original - trimmed for brevity in the canvas preview) */
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px}
     .container{max-width:1200px;margin:0 auto;background:white;border-radius:15px;box-shadow:0 10px 40px rgba(0,0,0,0.2);overflow:hidden}
@@ -67,10 +66,10 @@
   <div id="notification" class="notification">✓ Saved</div>
 
   <script>
-    // --- Configuration: replace this with your deployed Apps Script Web App URL ---
-   const APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzUFUPZcqdHPa7AsiqyEXR3aukbymty8Hk-w3YDA6pPljbgWNkLfgAIEsl2VlSbKaat/exec";
+    // --- Configuration: replace with your deployed Apps Script Web App URL ---
+    const APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwpVlERcp1jqNMWdY9a_OmeXWTQu9NVDObFgAo4TpWtn4FvXa41qKLMNxnPuD_XWzTQ/exec";
 
-    // --- Utility: user ID stored in localStorage (Option A) ---
+    // --- Utility: user ID stored in localStorage ---
     function getOrCreateUserId() {
       const key = 'weekly_activity_user_id';
       let id = localStorage.getItem(key);
@@ -81,7 +80,6 @@
       return id;
     }
 
-    // --- Existing app state ---
     let currentWeekOffset = 0;
     let selectedDay = new Date();
     let activities = {}; // { '2025-11-15': { '8': 'msg', ... }, ... }
@@ -177,45 +175,50 @@
       const n = document.getElementById('notification'); n.textContent = msg; n.classList.add('show'); setTimeout(()=> n.classList.remove('show'), 2500);
     }
 
-    // --- New: Save all activities to Apps Script (Cloud) ---
+    // --- Save to Apps Script (Cloud) ---
     async function saveToCloud(){
       if (!APPS_SCRIPT_WEBAPP_URL || APPS_SCRIPT_WEBAPP_URL.includes('YOUR_APPS_SCRIPT_URL')){
-        alert('Please replace APPS_SCRIPT_WEBAPP_URL in the script with your deployed Apps Script Web App URL.');
+        alert('Please replace APPS_SCRIPT_WEBAPP_URL with your deployed Apps Script Web App URL.');
         return;
       }
 
-      // Ensure local saved version is up to date
       saveActivities();
 
       const payload = {
         userId: getOrCreateUserId(),
         weekStart: getWeekDates(currentWeekOffset)[0].toISOString().split('T')[0],
-        activities: activities // full object: date -> {hour: text}
+        activities: activities
       };
+
+      console.log("Sending payload:", payload);
 
       try{
         const resp = await fetch(APPS_SCRIPT_WEBAPP_URL, {
           method: 'POST',
-          mode: 'cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const result = await resp.json();
-        if (result && result.status === 'success'){
-          notify('Saved to cloud ✓');
+
+        const text = await resp.text();
+        console.log("Raw response:", text);
+
+        let result;
+        try { result = JSON.parse(text); } catch(err){ console.error("JSON parse error:", err); notify('Cloud save failed'); return; }
+
+        if(result && result.status === 'success'){
+          notify(`Saved to cloud ✓ (${result.appended} rows)`);
         } else {
+          console.error("Cloud error:", result);
           notify('Cloud save failed');
-          console.error('Cloud error', result);
         }
       }catch(err){
-        console.error(err);
+        console.error("Network error:", err);
         notify('Cloud save failed (network)');
       }
     }
 
-    // init on load
+    // init
     init();
   </script>
 </body>
 </html>
-
