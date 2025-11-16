@@ -66,10 +66,8 @@
   <div id="notification" class="notification">✓ Saved</div>
 
   <script>
-    // --- Configuration: replace with your deployed Apps Script Web App URL ---
     const APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwpVlERcp1jqNMWdY9a_OmeXWTQu9NVDObFgAo4TpWtn4FvXa41qKLMNxnPuD_XWzTQ/exec";
 
-    // --- Utility: user ID stored in localStorage ---
     function getOrCreateUserId() {
       const key = 'weekly_activity_user_id';
       let id = localStorage.getItem(key);
@@ -82,7 +80,7 @@
 
     let currentWeekOffset = 0;
     let selectedDay = new Date();
-    let activities = {}; // { '2025-11-15': { '8': 'msg', ... }, ... }
+    let activities = {};
 
     function init() {
       updateWeekDisplay();
@@ -99,7 +97,7 @@
       monday.setDate(today.getDate() + diff + (offset * 7));
       monday.setHours(0,0,0,0);
       const dates = [];
-      for (let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);dates.push(d);} 
+      for (let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);dates.push(d);}
       return dates;
     }
 
@@ -175,7 +173,6 @@
       const n = document.getElementById('notification'); n.textContent = msg; n.classList.add('show'); setTimeout(()=> n.classList.remove('show'), 2500);
     }
 
-    // --- Save to Apps Script (Cloud) ---
     async function saveToCloud(){
       if (!APPS_SCRIPT_WEBAPP_URL || APPS_SCRIPT_WEBAPP_URL.includes('YOUR_APPS_SCRIPT_URL')){
         alert('Please replace APPS_SCRIPT_WEBAPP_URL with your deployed Apps Script Web App URL.');
@@ -193,7 +190,9 @@
       console.log("Sending payload:", payload);
 
       try{
-        const resp = await fetch(APPS_SCRIPT_WEBAPP_URL, {
+        // Temporary CORS proxy for local testing
+        const proxy = "https://cors-anywhere.herokuapp.com/";
+        const resp = await fetch(proxy + APPS_SCRIPT_WEBAPP_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -211,13 +210,13 @@
           console.error("Cloud error:", result);
           notify('Cloud save failed');
         }
+
       }catch(err){
         console.error("Network error:", err);
         notify('Cloud save failed (network)');
       }
     }
 
-    // init
     init();
   </script>
 </body>
